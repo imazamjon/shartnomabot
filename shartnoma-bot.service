@@ -1,0 +1,19 @@
+[Unit]
+Description=Shartnoma Telegram Bot
+After=network.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+WorkingDirectory=/home/azamjonbro/Desktop/ShartnomaBot
+ExecStart=/usr/bin/python3 /home/azamjonbro/Desktop/ShartnomaBot/bot.py
+Environment=PYTHONUNBUFFERED=1
+Restart=always
+RestartSec=10
+TimeoutStopSec=15
+UMask=0077
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

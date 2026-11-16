@@ -1,0 +1,7 @@
+.env
+data/orginfo-cache.json
+data/sellers/
+__pycache__/
+*.sqlite3*
+contracts/*
+!contracts/.gitkeep
