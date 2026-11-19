@@ -36,9 +36,8 @@ NEW, ADD, NEXT, CONFIRM, CANCEL = (
 FIELDS = ('name', 'stir', 'director', 'address', 'bank', 'account', 'mfo')
 LABELS = ('Nomi', 'STIR', 'Direktor', 'Manzil', 'Bank', 'Hisob', 'MFO')
 OPTIONAL_FIELDS = ('phone', 'oked')
-# Telefon shartnomaga yozilmaydi, shuning uchun sozlamada so‘ralmaydi.
-SETTINGS_FIELDS = ('stir', 'name', 'director', 'address', 'bank', 'account', 'mfo', 'oked')
-SETTINGS_LABELS = ('STIR', 'Nomi', 'Direktor', 'Manzil', 'Bank', 'Hisob', 'MFO', 'OKED / IFUT (ixtiyoriy)')
+SETTINGS_FIELDS = ('stir', 'name', 'director', 'address', 'bank', 'account', 'mfo', 'phone', 'oked')
+SETTINGS_LABELS = ('STIR', 'Nomi', 'Direktor', 'Manzil', 'Bank', 'Hisob', 'MFO', 'Telefon (ixtiyoriy)', 'OKED / IFUT (ixtiyoriy)')
 KEEP = '⏭ Hozirgisini qoldirish'
 NUMBER_SETTINGS = '🔢 Raqamlash sozlamalari'
 EDIT_NUMBER, EDIT_DATE, TODAY = '✏️ Raqamni o‘zgartirish', '📅 Sanani o‘zgartirish', '📅 Bugungi sana'
@@ -145,7 +144,7 @@ def parse_company(text, stir, defaults=None):
 
 def company_text(company):
     lines = [f'{label}: {company.get(key) or "—"}' for key, label in zip(FIELDS, LABELS)]
-    lines += [f'OKED / IFUT: {company["oked"]}'] if company.get('oked') else []
+    lines += [f'{label}: {company[key]}' for key, label in [('phone', 'Telefon'), ('oked', 'OKED / IFUT')] if company.get(key)]
     return '\n'.join(lines)
 
 
@@ -489,7 +488,8 @@ class Bot:
             pdf = self.pdf_exporter(path)
         except ExportError as error:
             logging.warning('pdf export failed: %s', error)
-            self.api.send(chat, 'Word tayyor. PDF yaratilmadi; qayta urinish uchun /pdf yuboring.')
+            reason = str(error)[-300:]
+            self.api.send(chat, 'Word tayyor. PDF yaratilmadi; qayta urinish uchun /pdf yuboring.\n\nSabab: ' + reason)
             return False
         self.api.document(chat, pdf)
         return True

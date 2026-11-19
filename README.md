@@ -100,7 +100,7 @@ Shablonsiz bot rekvizitlar va tovarlar ro'yxatidan **LOYIHA** tayyorlaydi. Bu to
 
 ## Har bir adminning sotuvchisi
 
-`/settings` avval STIRni so‘rab Orginfo orqali ma’lumot qidiradi, keyin nom, direktor, manzil, bank, 20 xonali hisob, MFO va ixtiyoriy OKEDni so'raydi. Telefon shartnomaga yozilmaydi va so‘ralmaydi. Mavjud qiymatni tugma bilan qoldirish mumkin. Yakuniy tasdiqlashsiz o'zgarish saqlanmaydi; `/bekor` oldingi sozlamani saqlab qoladi.
+`/settings` avval STIRni so‘rab Orginfo orqali ma’lumot qidiradi, keyin nom, direktor, manzil, bank, 20 xonali hisob, MFO va ixtiyoriy telefon va OKEDni so'raydi. Xaridor telefoni rekvizitlardagi «Тел:» qatoridan olinadi. Mavjud qiymatni tugma bilan qoldirish mumkin. Yakuniy tasdiqlashsiz o'zgarish saqlanmaydi; `/bekor` oldingi sozlamani saqlab qoladi.
 
 Rekvizitlar `data/sellers/TELEGRAM_ID.json` faylida har bir admin uchun alohida saqlanadi. Bir admin o'zgartirgan sotuvchi boshqasiga ta'sir qilmaydi. Avvalgi `company.json` mavjud bo'lsa eski o'rnatishlar uchun boshlang'ich qiymat sifatida o'qiladi. Yangi shartnoma boshlangan paytdagi sotuvchi nusxasi hujjat tugaguncha saqlanadi.
 

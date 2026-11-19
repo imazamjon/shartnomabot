@@ -40,6 +40,8 @@ def make_template():
 
 class FileTests(unittest.TestCase):
     def test_russian_and_spaced_numbers(self):
+        self.assertEqual(extract_fields('Тел: +998 (90) 123-45-67, 71 200 00 00')['phone'], '+998 (90) 123-45-67')
+        self.assertNotIn('phone', extract_fields('Телефон: —'))
         fields = extract_fields('ИНН: 123 456 789\nМФО: 00 450\nр/с: 20208 00000 00000 00001\nБанк: Мисол банк')
         self.assertEqual(fields['stir'], '123456789')
         self.assertEqual(fields['mfo'], '00450')

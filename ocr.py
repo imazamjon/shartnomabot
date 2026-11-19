@@ -19,7 +19,9 @@ ALIASES = {
     'bank': r'bank(?: nomi)?|банк|наименование банка',
     'account': r'hisob(?: raqami)?|h/r|р/с|расч[её]тный сч[её]т|сч[её]т',
     'mfo': r'mfo|мфо',
+    'phone': r'tel(?:efon)?\.?|тел(?:ефон)?\.?|phone',
 }
+PHONE = re.compile(r'\+?[0-9][0-9 ()-]{5,22}[0-9]')
 
 
 class ReadError(ValueError):
@@ -44,6 +46,13 @@ def extract_fields(text):
                 length = {'stir': 9, 'account': 20, 'mfo': 5}[key]
                 value = re.sub(r'[\s-]', '', value)
                 if not re.fullmatch(r'[0-9]{' + str(length) + '}', value):
+                    continue
+            if key == 'phone':
+                match = PHONE.search(value)
+                if not match or len(re.sub(r'[^0-9]', '', match[0])) < 7:
+                    continue
+                value = ' '.join(match[0].split())
+                if values:  # Bir nechta telefon bo‘lsa birinchisi olinadi.
                     continue
             if value not in values:
                 values.append(value)

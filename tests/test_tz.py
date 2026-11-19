@@ -41,7 +41,7 @@ class TZTests(unittest.TestCase):
         (self.root/'company.json').unlink();(self.root/'template.docx').write_bytes(TEMPLATE.read_bytes())
         self.send(NEW);self.assertEqual(self.store.session(7)['step'],'template_choice')
         self.send(READY);self.assertEqual(self.store.session(7)['step'],'settings');self.assertEqual(self.store.session(7)['index'],0)
-        for v in ['123456789','Seller','Director','Address','Bank','20208000000000000001','00450','-',CONFIRM]:self.send(v)
+        for v in ['123456789','Seller','Director','Address','Bank','20208000000000000001','00450','-','-',CONFIRM]:self.send(v)
         self.assertEqual(self.store.session(7)['step'],'stir');self.send(NEW);self.assertEqual(self.store.session(7)['step'],'stir')
     def test_changed_seller_stir_clears_old_fields(self):
         self.bot.lookup=lambda _:dict(stir='987654321',name='FOUND',address='NEW',source_url='https://orginfo.uz')

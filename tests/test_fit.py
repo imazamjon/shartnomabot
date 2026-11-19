@@ -19,11 +19,11 @@ def contract(items=1):
 
 
 class FitTests(unittest.TestCase):
-    def test_template_has_no_phone(self):
+    def test_template_has_phone_for_both_sides(self):
         with ZipFile(TEMPLATE) as z:
             xml = z.read('word/document.xml').decode()
-        self.assertNotIn('phone', xml)
-        self.assertNotIn('Тел:', xml)
+        self.assertEqual(xml.count('{{seller_phone}}'), 2)
+        self.assertEqual(xml.count('{{buyer_phone}}'), 2)
 
     def test_fake_converter_shrinks_until_fits(self):
         calls = []
