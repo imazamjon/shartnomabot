@@ -46,7 +46,7 @@ class Tests(unittest.TestCase):
         self.store = Store(self.root / 'data/test.sqlite3')
         self.api = FakeAPI()
         self.bot = Bot(self.api, self.store, self.root, {7}, lookup=lambda stir: None, pdf_exporter=fake_pdf)
-        self.store.set_next_number('7:123456789', 1)
+        self.store.set_next_number('stir:123456789', 1)
 
     def tearDown(self):
         self.store.db.close()

@@ -41,7 +41,7 @@ class TZTests(unittest.TestCase):
         (self.root/'company.json').unlink();(self.root/'template.docx').write_bytes(TEMPLATE.read_bytes())
         self.send(NEW);self.assertEqual(self.store.session(7)['step'],'template_choice')
         self.send(READY);self.assertEqual(self.store.session(7)['step'],'settings');self.assertEqual(self.store.session(7)['index'],0)
-        for v in ['123456789','Seller','Director','Address','Bank','20208000000000000001','00450','-','-',CONFIRM]:self.send(v)
+        for v in ['123456789','Seller','Director','Address','Bank','20208000000000000001','00450','-',CONFIRM]:self.send(v)
         self.assertEqual(self.store.session(7)['step'],'stir');self.send(NEW);self.assertEqual(self.store.session(7)['step'],'stir')
     def test_changed_seller_stir_clears_old_fields(self):
         self.bot.lookup=lambda _:dict(stir='987654321',name='FOUND',address='NEW',source_url='https://orginfo.uz')
@@ -55,6 +55,24 @@ class TZTests(unittest.TestCase):
         self.bot.pdf_exporter=test_bot.fake_pdf;self.send(CONFIRM)
         self.assertEqual(len(self.api.files),1);self.assertEqual(len(self.api.pdf_files),1)
         self.assertEqual(self.store.db.execute('SELECT COUNT(*) FROM contracts').fetchone()[0],1)
+    def test_discover_template_choice(self):
+        from bot import CONTRACT_TEMPLATES,DISCOVER_FILE
+        self.configure()
+        out=io.BytesIO()
+        with ZipFile(TEMPLATE) as src,ZipFile(out,'w') as dst:
+            for name in src.namelist():
+                data=src.read(name)
+                dst.writestr(name,data.replace('ДОГОВОР ПОСТАВКИ'.encode(),b'DISCOVER') if name=='word/document.xml' else data)
+        (self.root/DISCOVER_FILE).write_bytes(out.getvalue())
+        self.send(NEW);self.assertEqual(self.store.session(7)['step'],'template_pick')
+        self.send('nimadir');self.assertEqual(self.store.session(7)['step'],'template_pick')
+        self.send(CONTRACT_TEMPLATES[1][0]);s=self.store.session(7)
+        self.assertEqual((s['step'],s['template_file']),('stir',DISCOVER_FILE))
+        for v in [test_bot.COMPANY['stir'],test_bot.TEXT,CONFIRM,VAT12,INCLUDED,'Цемент','т','3','800000',NEXT,CONFIRM]:self.send(v)
+        self.assertIn('DISCOVER',self.xml())
+        self.send(NEW);self.send(CONTRACT_TEMPLATES[0][0]);self.assertEqual(self.store.session(7)['template_file'],'template.docx')
+    def test_no_choice_without_discover_file(self):
+        self.configure();self.send(NEW);self.assertEqual(self.store.session(7)['step'],'stir')
     def test_personal_templates(self):
         self.configure();p=self.root/'data/templates/7.docx';p.parent.mkdir(parents=True);p.write_bytes(TEMPLATE.read_bytes())
         write_json(self.bot.preference_path(7),{'template':'custom'});self.assertEqual(self.bot.template_for(7),p)

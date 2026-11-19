@@ -91,7 +91,7 @@ Shablonsiz bot rekvizitlar va tovarlar ro'yxatidan **LOYIHA** tayyorlaydi. Bu to
 
 ## Har bir adminning sotuvchisi
 
-`/settings` avval STIRni so‘rab Orginfo orqali ma’lumot qidiradi, keyin nom, direktor, manzil, bank, 20 xonali hisob, MFO va ixtiyoriy telefon/OKEDni so'raydi. Mavjud qiymatni tugma bilan qoldirish mumkin. Yakuniy tasdiqlashsiz o'zgarish saqlanmaydi; `/bekor` oldingi sozlamani saqlab qoladi.
+`/settings` avval STIRni so‘rab Orginfo orqali ma’lumot qidiradi, keyin nom, direktor, manzil, bank, 20 xonali hisob, MFO va ixtiyoriy OKEDni so'raydi. Telefon shartnomaga yozilmaydi va so‘ralmaydi. Mavjud qiymatni tugma bilan qoldirish mumkin. Yakuniy tasdiqlashsiz o'zgarish saqlanmaydi; `/bekor` oldingi sozlamani saqlab qoladi.
 
 Rekvizitlar `data/sellers/TELEGRAM_ID.json` faylida har bir admin uchun alohida saqlanadi. Bir admin o'zgartirgan sotuvchi boshqasiga ta'sir qilmaydi. Avvalgi `company.json` mavjud bo'lsa eski o'rnatishlar uchun boshlang'ich qiymat sifatida o'qiladi. Yangi shartnoma boshlangan paytdagi sotuvchi nusxasi hujjat tugaguncha saqlanadi.
 
@@ -101,7 +101,9 @@ Tayyor shablon birlik, miqdor va bir birlik narxini alohida so‘raydi. QQS 12%,
 
 Shaxsiy shablon `data/templates/TELEGRAM_ID.docx`, tanlov `data/preferences/TELEGRAM_ID.json`da saqlanadi. `/shablon` bot maydonlari qo‘yilgan Word shablonni bir marta ulaydi. Oddiy bo‘sh hujjat avtomatik ravishda moslanmaydi: yuborilgan maydonli namunadan foydalanish yoki hujjatni bir marta shu maydonlarga moslash kerak. `{{items}}` ishlatadigan eski oddiy shablonlarda avvalgi jami-summa oqimi saqlangan.
 
-PDF aynan saqlangan Word fayldan LibreOffice orqali olinadi. Joriy kompyuterda bundled LibreOffice ishlatiladi; boshqa serverda `SOFFICE_PATH` yoki PATHdagi `soffice` kerak. Har aylantirish uchun alohida profil, 45 soniya chegara va atomar fayl yozish bor. Word avval yuboriladi. PDF xatosida `/pdf`, barcha fayllar uchun `/oxirgi`; tasdiqni qayta bosish shartnoma raqamini ko‘paytirmaydi.
+PDF aynan saqlangan Word fayldan LibreOffice orqali olinadi. Bot `SOFFICE_PATH`, PATHdagi `soffice`/`libreoffice`, `/opt/libreoffice*` va bundled nusxani ketma-ket sinaydi, har birini ikki marta. Har aylantirish uchun alohida profil, 120 soniya chegara va atomar fayl yozish bor. Xato sababi (stderr) jurnalga yoziladi. Serverda: `sudo apt install libreoffice-writer poppler-utils fonts-liberation`.
+
+Sahifaga moslash: tayyor shablonda shartnomaning asosiy qismi 2 betdan, spetsifikatsiya 1 betdan oshmasligi kerak. Word yaratilgach LibreOffice bilan sahifalar sanaladi; oshsa shrift 0,5 pt dan kichraytiriladi (asosiy matn kamida 7,5 pt, spetsifikatsiya 7 pt), ko‘p tovarda jadval qatorlari zichlanadi. Spetsifikatsiya chegarasi — `pageBreakBefore` bo‘lgan paragraf. Bunday chegarasi yo‘q shaxsiy shablonlar o‘zgartirilmaydi. LibreOffice bo‘lmasa hujjat asl ko‘rinishida beriladi. Word avval yuboriladi. PDF xatosida `/pdf`, barcha fayllar uchun `/oxirgi`; tasdiqni qayta bosish shartnoma raqamini ko‘paytirmaydi.
 
 Rekvizitlar bosqichidagi har bir rasm/PDF `data/uploads/TELEGRAM_ID/` ichida OCR xato bersa ham saqlanadi. Fayl yonida STIR va SHA256 yozilgan mahalliy JSON bor. MongoDB ulanishi o‘zgartirilmagan, unga yangi yozish qo‘shilmagan. Didox integratsiyasi yo‘q: hujjatlar Telegramga yuboriladi.
 
@@ -121,9 +123,17 @@ python3 -m unittest discover -s tests -v
 
 Telegram API: https://core.telegram.org/bots/api
 
+## Shartnoma namunalari
+
+`template.docx` — umumiy shartnoma. `template-discover-invest.docx` mavjud bo‘lsa, har `/start`da «Shartnoma namunasining qaysi biridan foydalanamiz?» deb so‘raladi: «📑 Umumiy shartnoma» yoki «🏢 Discover Invest shartnomasi». Discover Invest shablonini istalgan admin `/discover` orqali maydonli .docx sifatida yuklaydi. Shaxsiy shablon ulagan adminga tanlov chiqmaydi.
+
+## Xodim qo‘shish
+
+Yangi xodimning Telegram ID raqamini (xodim uni @userinfobot orqali bilib oladi) `.env`dagi `ALLOWED_USER_IDS`ga vergul bilan qo‘shing va botni qayta ishga tushiring. Xodim birinchi `/start`da sotuvchi korxonani STIR orqali sozlaydi.
+
 ## Shartnoma raqami va sanasi
 
-`/settings` ichida «🔢 Raqamlash sozlamalari» tugmasi yoki `/raqamlash`: navbatdagi raqamni kiriting va tasdiqlang. Masalan, oxirgi ishlatilgan raqam 283 bo‘lsa 284 kiritiladi. Raqamlash admin va sotuvchi STIR juftligi uchun alohida, mahalliy SQLite ichida saqlanadi. Sotuvchi almashsa uning ketma-ketligi aralashmaydi.
+`/settings` ichida «🔢 Raqamlash sozlamalari» tugmasi yoki `/raqamlash`: navbatdagi raqamni kiriting va tasdiqlang. Masalan, oxirgi ishlatilgan raqam 283 bo‘lsa 284 kiritiladi. Raqamlash sotuvchi korxona (STIR) bo‘yicha barcha xodimlar uchun umumiy, mahalliy SQLite ichida saqlanadi: bir korxonaning ikki xodimi bir xil № bermaydi. Sotuvchi almashsa uning ketma-ketligi aralashmaydi. Eski admin bo‘yicha ketma-ketliklar ishga tushishda eng kattasi bilan birlashtiriladi.
 
 Tasdiqlash oynasi raqam va sanani ko‘rsatadi; «Raqamni o‘zgartirish» va «Sanani o‘zgartirish» tugmalari bor. Birinchi raqam sozlanmagan bo‘lsa bot uni alohida so‘raydi. Sana Toshkent bo‘yicha bugungi kun sifatida taklif etiladi yoki KK.OO.YYYY shaklida kiritiladi. Tasdiqlangan qiymatlar shartnoma va spetsifikatsiyada ishlatiladi. Fayl nomidagi ID ichki yozuv identifikatori, hujjatdagi biznes raqamidan mustaqil.
 

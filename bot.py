@@ -20,7 +20,8 @@ from ocr import MAX_BYTES, ReadError, read_document, extract_fields
 from templates import inspect_template, fill_template
 from document import document_bytes
 from contract_values import calculate_item
-from pdf_export import export_pdf, ExportError
+from pdf_export import export_pdf, ExportError, convert_bytes
+from fit import fit_document
 
 ROOT = Path(__file__).resolve().parent
 ACCESS_DENIED = (
@@ -35,14 +36,19 @@ NEW, ADD, NEXT, CONFIRM, CANCEL = (
 FIELDS = ('name', 'stir', 'director', 'address', 'bank', 'account', 'mfo')
 LABELS = ('Nomi', 'STIR', 'Direktor', 'Manzil', 'Bank', 'Hisob', 'MFO')
 OPTIONAL_FIELDS = ('phone', 'oked')
-SETTINGS_FIELDS = ('stir', 'name', 'director', 'address', 'bank', 'account', 'mfo') + OPTIONAL_FIELDS
-SETTINGS_LABELS = ('STIR', 'Nomi', 'Direktor', 'Manzil', 'Bank', 'Hisob', 'MFO') + ('Telefon (ixtiyoriy)', 'OKED / IFUT (ixtiyoriy)')
+# Telefon shartnomaga yozilmaydi, shuning uchun sozlamada so‘ralmaydi.
+SETTINGS_FIELDS = ('stir', 'name', 'director', 'address', 'bank', 'account', 'mfo', 'oked')
+SETTINGS_LABELS = ('STIR', 'Nomi', 'Direktor', 'Manzil', 'Bank', 'Hisob', 'MFO', 'OKED / IFUT (ixtiyoriy)')
 KEEP = '⏭ Hozirgisini qoldirish'
 NUMBER_SETTINGS = '🔢 Raqamlash sozlamalari'
 EDIT_NUMBER, EDIT_DATE, TODAY = '✏️ Raqamni o‘zgartirish', '📅 Sanani o‘zgartirish', '📅 Bugungi sana'
 READY, CUSTOM = '📑 Tayyor shablondan foydalanish', '📤 O‘z shablonimni ulash'
 VAT12, VAT0, VAT_OTHER = 'QQS 12%', 'QQSsiz', 'Boshqa QQS stavkasi'
 INCLUDED, EXCLUDED = 'Narx QQS bilan', 'Narx QQSsiz'
+# Har yangi shartnomada qaysi namuna ishlatilishi so‘raladi (fayl mavjud bo‘lsa).
+DISCOVER_FILE = 'template-discover-invest.docx'
+CONTRACT_TEMPLATES = (('📑 Umumiy shartnoma', 'template.docx'),
+                      ('🏢 Discover Invest shartnomasi', DISCOVER_FILE))
 EXAMPLE = ('Nomi: MISOL MCHJ\nSTIR: {stir}\nDirektor: Ism Familiya\n'
            'Manzil: Toshkent\nBank: Bank nomi\nHisob: 20208000000000000001\nMFO: 00450')
 
@@ -124,7 +130,7 @@ def parse_company(text, stir, defaults=None):
 
 def company_text(company):
     lines = [f'{label}: {company.get(key) or "—"}' for key, label in zip(FIELDS, LABELS)]
-    lines += [f'{label}: {company[key]}' for key, label in [('phone', 'Telefon'), ('oked', 'OKED / IFUT')] if company.get(key)]
+    lines += [f'OKED / IFUT: {company["oked"]}'] if company.get('oked') else []
     return '\n'.join(lines)
 
 
@@ -159,11 +165,24 @@ class Store:
                 old = json.loads(raw)
                 stir = old.get('seller_snapshot', {}).get('stir') if old.get('seller_snapshot') else None
                 if stir:
-                    scope = f'{chat}:{stir}'
+                    scope = f'stir:{stir}'
                     self.db.execute('UPDATE contracts SET scope=?,display_number=? WHERE id=?', (scope, str(identity), identity))
                     self.db.execute('INSERT INTO numbering VALUES (?,?) ON CONFLICT(scope) DO UPDATE SET next_number=MAX(next_number,excluded.next_number)', (scope, identity + 1))
             except (ValueError, TypeError, AttributeError):
                 continue
+        # Raqamlash endi admin emas, sotuvchi korxona (STIR) bo‘yicha umumiy:
+        # bir korxonaning bir nechta xodimi bir xil № bermasligi uchun.
+        for scope, value in self.db.execute("SELECT scope,next_number FROM numbering WHERE scope NOT LIKE 'stir:%'").fetchall():
+            match = re.fullmatch(r'\d+:(\d{9})', scope)
+            if not match:
+                continue
+            shared = 'stir:' + match[1]
+            self.db.execute('INSERT INTO numbering VALUES (?,?) ON CONFLICT(scope) DO UPDATE SET next_number=MAX(next_number,excluded.next_number)', (shared, value))
+            self.db.execute('DELETE FROM numbering WHERE scope=?', (scope,))
+        for identity, scope in self.db.execute("SELECT id,scope FROM contracts WHERE scope!='' AND scope NOT LIKE 'stir:%'").fetchall():
+            match = re.fullmatch(r'\d+:(\d{9})', scope)
+            if match:
+                self.db.execute('UPDATE OR IGNORE contracts SET scope=? WHERE id=?', ('stir:' + match[1], identity))
         self.db.commit()
 
     def next_number(self, scope):
@@ -324,11 +343,14 @@ class Telegram:
 
 
 class Bot:
-    def __init__(self, api, store, root, allowed, lookup=None, reader=read_document, pdf_exporter=export_pdf):
+    def __init__(self, api, store, root, allowed, lookup=None, reader=read_document, pdf_exporter=export_pdf,
+                 fitter=None):
         self.api, self.store, self.root, self.allowed = api, store, root, allowed
         self.lookup = lookup if lookup is not None else Orginfo(cache_path=root / 'data/orginfo-cache.json').lookup
         self.reader = reader
         self.pdf_exporter = pdf_exporter
+        # Shartnoma 2 bet + spetsifikatsiya 1 bet bo‘lishi uchun shrift moslanadi.
+        self.fitter = fitter if fitter is not None else (fit_document if pdf_exporter is export_pdf else None)
 
     def seller_path(self, chat):
         return self.root / 'data' / 'sellers' / f'{int(chat)}.json'
@@ -355,8 +377,8 @@ class Bot:
             return personal
         return self.root / 'template.docx'
 
-    def structured(self, chat):
-        template = self.template_for(chat)
+    def structured(self, chat, template=None):
+        template = template or self.template_for(chat)
         if not template.exists():
             return False
         from zipfile import ZipFile
@@ -371,15 +393,33 @@ class Bot:
             self.api.send(chat, 'Avval sotuvchi — o‘z korxonangizni bir marta sozlaymiz. STIR bo‘yicha ma’lumot qidiraman.')
             self.settings_prompt(chat, session)
             return
+        choices = self.template_choices(chat)
+        if len(choices) > 1:
+            self.store.save(chat, {'step': 'template_pick', 'items': [], 'seller_snapshot': seller})
+            self.api.send(chat, 'Shartnoma namunasining qaysi biridan foydalanamiz?',
+                          [label for label, _ in choices] + [CANCEL])
+            return
         self.store.save(chat, {'step': 'stir', 'items': [], 'seller_snapshot': seller,
                                'structured': self.structured(chat)})
         self.api.send(chat, 'Hamkor korxonaning 9 xonali STIR raqamini kiriting.', [CANCEL])
+
+    def template_choices(self, chat):
+        """Namunalar ro‘yxati. Shaxsiy shablon ulangan bo‘lsa tanlov so‘ralmaydi."""
+        if self.template_for(chat) != self.root / 'template.docx':
+            return []
+        return [(label, name) for label, name in CONTRACT_TEMPLATES if (self.root / name).is_file()]
+
+    def session_template(self, chat, s):
+        name = s.get('template_file')
+        if name in {file for _, file in CONTRACT_TEMPLATES} and (self.root / name).is_file():
+            return self.root / name
+        return self.template_for(chat)
 
     def number_scope(self, chat, seller=None):
         seller = seller or self.seller_for(chat)
         if not seller:
             raise ValueError('Avval sotuvchini /settings orqali kiriting.')
-        return f'{int(chat)}:{seller["stir"]}'
+        return f'stir:{seller["stir"]}'
 
     def confirmation(self, chat, session):
         session['step'] = 'confirm'
@@ -399,9 +439,30 @@ class Bot:
         sample_path.parent.mkdir(exist_ok=True)
         date = datetime.now(ZoneInfo('Asia/Tashkent')).strftime('%d.%m.%Y')
         template = self.template_for(chat)
-        sample_path.write_bytes(fill_template(template.read_bytes(), 'SINOV', date, demo, sample) if template.exists()
-                                else document_bytes('SINOV', date, demo, sample))
+        content = (fill_template(template.read_bytes(), 'SINOV', date, demo, sample) if template.exists()
+                   else document_bytes('SINOV', date, demo, sample))
+        self.write_document(sample_path, content)
         return sample_path
+
+    def write_document(self, path, content):
+        """Save DOCX (fitted to page limits) and, when already rendered, its PDF."""
+        pdf = None
+        if self.fitter:
+            try:
+                content, pdf = self.fitter(content)
+            except Exception:  # Layout tuning must never block the contract.
+                logging.exception('fit failed; original layout used')
+                pdf = None
+        temp = path.with_suffix('.tmp')
+        temp.write_bytes(content)
+        temp.replace(path)
+        if pdf:
+            target = path.with_suffix('.pdf')
+            temporary = target.with_suffix('.pdf.tmp')
+            temporary.write_bytes(pdf)
+            temporary.replace(target)
+        else:
+            path.with_suffix('.pdf').unlink(missing_ok=True)
 
     def deliver_pdf(self, chat, path):
         try:
@@ -438,7 +499,7 @@ class Bot:
             return
         if text == '/yordam':
             self.api.send(chat, '📄 /start — yangi shartnoma\n⚙️ /settings — sotuvchi sozlamalari\n🏢 /sozlash — rekvizitlarni bir xabarda kiritish\n'
-                          '🔢 /raqamlash — keyingi shartnoma raqami\n📑 /shablon — Word shablon ulash\n🧪 /namuna — sinov hujjati\n'
+                          '🔢 /raqamlash — keyingi shartnoma raqami\n📑 /shablon — Word shablon ulash\n🏢 /discover — Discover Invest shablonini yuklash\n🧪 /namuna — sinov hujjati\n'
                           '📋 /holat — sozlamalar\n📎 /oxirgi — Word va PDF\n📕 /pdf — PDFni qayta olish\n❌ /bekor — bekor qilish')
             return
         if text == '/holat':
@@ -457,7 +518,7 @@ class Bot:
             scope = self.number_scope(chat, seller)
             current = self.store.next_number(scope)
             self.store.save(chat, {'step': 'number_settings', 'number_scope': scope})
-            self.api.send(chat, f'🔢 {seller["name"]}\nKeyingi raqam: {current or "sozlanmagan"}\n\nNavbatdagi shartnomaga qo‘yiladigan raqamni kiriting. Masalan, oxirgisi 283 bo‘lsa 284 yozing. Har yangi hujjatda raqam va sanani tahrirlash mumkin. Raqamlash sizning shu sotuvchingiz uchun alohida saqlanadi.', [CANCEL])
+            self.api.send(chat, f'🔢 {seller["name"]}\nKeyingi raqam: {current or "sozlanmagan"}\n\nNavbatdagi shartnomaga qo‘yiladigan raqamni kiriting. Masalan, oxirgisi 283 bo‘lsa 284 yozing. Har yangi hujjatda raqam va sanani tahrirlash mumkin. Raqamlash shu korxona (STIR) uchun barcha xodimlarga umumiy.', [CANCEL])
             return
         if text == '/settings':
             session = {'step': 'settings', 'index': 0, 'values': self.seller_for(chat) or {}}
@@ -479,6 +540,13 @@ class Bot:
                           '{{seller_bank}}, {{seller_account}}, {{seller_mfo}}. '
                           'Xaridor uchun seller o‘rniga buyer yoziladi.\n'
                           'Shablonni ulashdan oldin barcha shartlarini o‘zingiz tekshiring.', [CANCEL])
+            return
+        if text == '/discover':
+            self.store.save(chat, {'step': 'template', 'target': DISCOVER_FILE})
+            if (self.root / DISCOVER_FILE).exists():
+                self.api.document(chat, self.root / DISCOVER_FILE)
+            self.api.send(chat, 'Discover Invest shartnomasining maydonli .docx shablonini yuboring. '
+                          'U barcha adminlar uchun «🏢 Discover Invest shartnomasi» tugmasi bilan chiqadi.', [CANCEL])
             return
         if text == '/namuna':
             sample_path = self.sample_document(chat)
@@ -569,6 +637,14 @@ class Bot:
             downloaded = time.monotonic()
             if s['step'] == 'template':
                 inspect_template(data)
+                if s.get('target') == DISCOVER_FILE:
+                    dest = self.root / DISCOVER_FILE
+                    tmp = dest.with_suffix('.tmp')
+                    tmp.write_bytes(data)
+                    tmp.replace(dest)
+                    self.store.clear(chat)
+                    self.api.send(chat, '✅ Discover Invest shabloni saqlandi. /start bosilganda namuna tanlanadi.')
+                    return
                 dest = self.root / 'data' / 'templates' / f'{int(chat)}.docx'
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 tmp = dest.with_suffix('.tmp')
@@ -633,6 +709,14 @@ class Bot:
             value = datetime.now(ZoneInfo('Asia/Tashkent')).strftime('%d.%m.%Y') if text == TODAY else text
             s['contract_date'] = contract_date(value)
             self.confirmation(chat, s)
+            return
+        if step == 'template_pick':
+            chosen = dict(CONTRACT_TEMPLATES).get(text)
+            if not chosen or not (self.root / chosen).is_file():
+                raise ValueError('Pastdagi tugmalardan shartnoma namunasini tanlang.')
+            s.update(step='stir', template_file=chosen, structured=self.structured(chat, self.root / chosen))
+            self.store.save(chat, s)
+            self.api.send(chat, f'{text} tanlandi.\nHamkor korxonaning 9 xonali STIR raqamini kiriting.', [CANCEL])
             return
         if step == 'template_choice':
             if text == READY:
@@ -886,12 +970,12 @@ class Bot:
                 number, date = self.store.create_contract(chat, s)
                 path = self.root / 'contracts' / f'shartnoma-{number:06d}.docx'
                 path.parent.mkdir(exist_ok=True)
-                temp = path.with_suffix('.tmp')
-                template = self.template_for(chat)
+                template = self.session_template(chat, s)
                 content = (fill_template(template.read_bytes(), s.get('contract_number', number), date, seller, s) if template.exists()
                            else document_bytes(s.get('contract_number', number), date, seller, s))
-                temp.write_bytes(content)
-                temp.replace(path)
+                if hasattr(self.api, 'progress'):
+                    self.api.progress(chat)
+                self.write_document(path, content)
                 self.store.set_file(number, path)
                 s.update(step='delivery', file=str(path), word_sent=False)
                 self.store.save(chat, s)

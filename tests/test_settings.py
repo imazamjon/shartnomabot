@@ -14,7 +14,7 @@ class SettingsTests(unittest.TestCase):
 
     def fill(self, name='NEW SELLER'):
         self.send('/settings')
-        for value in ['123456789',name,'Direktor','Manzil','Bank','20208000000000000001','00450','-','-']:
+        for value in ['123456789',name,'Direktor','Manzil','Bank','20208000000000000001','00450','-']:
             self.send(value)
 
     def test_settings_saved_after_confirmation_only(self):
@@ -30,7 +30,7 @@ class SettingsTests(unittest.TestCase):
         self.fill('FIRST SELLER');self.send(CONFIRM)
         self.bot.allowed.add(8)
         self.send('/settings',8)
-        for value in ['987654321','SECOND SELLER','Rahbar','Manzil','Bank','20208000000000000002','00451','-','-']:
+        for value in ['987654321','SECOND SELLER','Rahbar','Manzil','Bank','20208000000000000002','00451','-']:
             self.send(value,8)
         self.send(CONFIRM,8)
         self.assertEqual(self.bot.seller_for(7)['name'],'FIRST SELLER')
@@ -49,7 +49,7 @@ class SettingsTests(unittest.TestCase):
     def test_keep_and_optional_fields(self):
         self.send('/settings')
         for _ in range(7):self.send(KEEP)
-        self.send('+998 90 000 00 00');self.send('69201');self.send(CONFIRM)
+        self.send('69201');self.send(CONFIRM)
         seller=self.bot.seller_for(7)
         self.assertEqual(seller['name'],test_bot.COMPANY['name'])
         self.assertEqual(seller['oked'],'69201')
