@@ -20,7 +20,7 @@ from ocr import MAX_BYTES, ReadError, read_document, extract_fields
 from templates import inspect_template, fill_template
 from document import document_bytes
 from contract_values import calculate_item
-from pdf_export import export_pdf, ExportError, convert_bytes
+from pdf_export import export_pdf, ExportError, available as pdf_available
 from fit import fit_document
 
 ROOT = Path(__file__).resolve().parent
@@ -51,6 +51,21 @@ CONTRACT_TEMPLATES = (('📑 Umumiy shartnoma', 'template.docx'),
                       ('🏢 Discover Invest shartnomasi', DISCOVER_FILE))
 EXAMPLE = ('Nomi: MISOL MCHJ\nSTIR: {stir}\nDirektor: Ism Familiya\n'
            'Manzil: Toshkent\nBank: Bank nomi\nHisob: 20208000000000000001\nMFO: 00450')
+
+
+def storage_status(root):
+    """Railway volume data/ ga ulanganmi — ma'lumotlar deploy'dan keyin saqlanadimi."""
+    data = (Path(root) / 'data').resolve()
+    mount = os.environ.get('RAILWAY_VOLUME_MOUNT_PATH', '').rstrip('/')
+    if mount and Path(mount).resolve() == data:
+        return True, f'💾 Ma’lumotlar doimiy: Railway volume ulangan ({mount}).'
+    if mount:
+        return False, f'⚠️ Volume {mount} ga ulangan, lekin kerakli joy {data}. Mount path’ni /app/data qiling.'
+    if os.path.ismount(data):
+        return True, '💾 Ma’lumotlar doimiy: data/ alohida diskda.'
+    if os.environ.get('RAILWAY_ENVIRONMENT') or os.environ.get('RAILWAY_PROJECT_ID'):
+        return False, '⚠️ Railway volume ulanmagan! Deploy’da raqamlash va sozlamalar o‘chadi.'
+    return True, '💾 Ma’lumotlar mahalliy diskda saqlanadi.'
 
 
 def load_env(path):
@@ -513,7 +528,9 @@ class Bot:
             template = '✅ Word shablon ulangan' if self.template_for(chat).exists() else '📝 Hozir umumiy LOYIHA yaratiladi'
             if seller:
                 status += '\n🔢 Keyingi raqam: ' + str(self.store.next_number(self.number_scope(chat, seller)) or 'sozlanmagan — /raqamlash')
-            self.api.send(chat, status + '\n' + template + '\n📷 Rasm va PDF rekvizitlar o‘qiladi.')
+            pdf = '📕 PDF: LibreOffice bor' if pdf_available() else '⚠️ PDF: LibreOffice topilmadi'
+            self.api.send(chat, status + '\n' + template + '\n' + storage_status(self.root)[1] + '\n' + pdf
+                          + '\n📷 Rasm va PDF rekvizitlar o‘qiladi.')
             return
         if text in ('/raqamlash', NUMBER_SETTINGS):
             seller = self.seller_for(chat)
@@ -1022,6 +1039,9 @@ def main():
     bot = Bot(api, store, ROOT, allowed)
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
     logging.info('Bot ishga tushdi. To‘xtatish: Ctrl+C')
+    persistent, message = storage_status(ROOT)
+    (logging.info if persistent else logging.warning)('%s', message)
+    logging.info('PDF: %s', 'LibreOffice bor' if pdf_available() else 'LibreOffice topilmadi')
     try:
         while True:
             try:
