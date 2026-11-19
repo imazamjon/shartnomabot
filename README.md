@@ -1,5 +1,14 @@
 # Shartnoma bot
 
+## Railway
+
+Repo ildizidagi `Dockerfile` LibreOffice (PDF), Poppler, Tesseract (eng/rus/uzb) va Times New Roman/Calibri o‘rnini bosuvchi shriftlarni o‘rnatadi; `railway.json` Railway’ga shu Dockerfile’ni ishlatishni aytadi.
+
+1. Railway → Variables: `BOT_TOKEN`, `ALLOWED_USER_IDS` (vergul bilan, masalan `1573757720,123456789`).
+2. Railway → service → Volume qo‘shing, mount path: `/app/data`. Baza, sotuvchilar, raqamlash, yuklangan shablonlar va tayyor shartnomalar (`/app/contracts` → `data/contracts`) shu yerda saqlanadi. Volume bo‘lmasa har deploy’da ular o‘chadi.
+3. Replica faqat 1 ta bo‘lsin va bot boshqa joyda (kompyuter, boshqa server) ishlamasin — aks holda Telegram 409 beradi.
+4. Deploy log’ida `LibreOffice ...` versiyasi chiqadi (build vaqtida tekshiriladi).
+
 ## Doimiy ishlash
 
 Desktopdagi bot `shartnoma-bot.service` foydalanuvchi systemd xizmati bilan ishlaydi. Avtomatik ishga tushish va sessiyadan chiqqanda ishlash (`linger`) yoqilgan. Jarayon to'xtasa, 10 soniyadan so'ng qayta ishga tushadi. Internet uzilsa, bot qayta ulanishga urinadi. Kompyuter o'chirilgan yoki uyqu holatida bo'lsa bot ishlamaydi.

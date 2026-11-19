@@ -407,12 +407,17 @@ class Bot:
         """Namunalar ro‘yxati. Shaxsiy shablon ulangan bo‘lsa tanlov so‘ralmaydi."""
         if self.template_for(chat) != self.root / 'template.docx':
             return []
-        return [(label, name) for label, name in CONTRACT_TEMPLATES if (self.root / name).is_file()]
+        return [(label, name) for label, name in CONTRACT_TEMPLATES if self.named_template(name).is_file()]
+
+    def named_template(self, name):
+        """Yuklangan shablon data/ ichida (Railway volume), standart nusxa loyiha ildizida."""
+        uploaded = self.root / 'data' / name
+        return uploaded if uploaded.is_file() else self.root / name
 
     def session_template(self, chat, s):
         name = s.get('template_file')
-        if name in {file for _, file in CONTRACT_TEMPLATES} and (self.root / name).is_file():
-            return self.root / name
+        if name in {file for _, file in CONTRACT_TEMPLATES} and self.named_template(name).is_file():
+            return self.named_template(name)
         return self.template_for(chat)
 
     def number_scope(self, chat, seller=None):
@@ -543,8 +548,8 @@ class Bot:
             return
         if text == '/discover':
             self.store.save(chat, {'step': 'template', 'target': DISCOVER_FILE})
-            if (self.root / DISCOVER_FILE).exists():
-                self.api.document(chat, self.root / DISCOVER_FILE)
+            if self.named_template(DISCOVER_FILE).exists():
+                self.api.document(chat, self.named_template(DISCOVER_FILE))
             self.api.send(chat, 'Discover Invest shartnomasining maydonli .docx shablonini yuboring. '
                           'U barcha adminlar uchun «🏢 Discover Invest shartnomasi» tugmasi bilan chiqadi.', [CANCEL])
             return
@@ -638,7 +643,7 @@ class Bot:
             if s['step'] == 'template':
                 inspect_template(data)
                 if s.get('target') == DISCOVER_FILE:
-                    dest = self.root / DISCOVER_FILE
+                    dest = self.root / 'data' / DISCOVER_FILE
                     tmp = dest.with_suffix('.tmp')
                     tmp.write_bytes(data)
                     tmp.replace(dest)
@@ -712,9 +717,9 @@ class Bot:
             return
         if step == 'template_pick':
             chosen = dict(CONTRACT_TEMPLATES).get(text)
-            if not chosen or not (self.root / chosen).is_file():
+            if not chosen or not self.named_template(chosen).is_file():
                 raise ValueError('Pastdagi tugmalardan shartnoma namunasini tanlang.')
-            s.update(step='stir', template_file=chosen, structured=self.structured(chat, self.root / chosen))
+            s.update(step='stir', template_file=chosen, structured=self.structured(chat, self.named_template(chosen)))
             self.store.save(chat, s)
             self.api.send(chat, f'{text} tanlandi.\nHamkor korxonaning 9 xonali STIR raqamini kiriting.', [CANCEL])
             return
@@ -998,6 +1003,8 @@ class Bot:
 def main():
     # A second polling process would cause Telegram 409 conflicts.
     import fcntl
+    # Railway: data/ — doimiy volume; Docker'da contracts/ unga havola.
+    (ROOT / 'data' / 'contracts').mkdir(parents=True, exist_ok=True)
     lock = (ROOT / 'data/bot.lock').open('w')
     try:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
