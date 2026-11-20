@@ -166,6 +166,9 @@ class Store:
                 id INTEGER PRIMARY KEY AUTOINCREMENT, chat INTEGER NOT NULL,
                 date TEXT NOT NULL, data TEXT NOT NULL, file TEXT NOT NULL DEFAULT '');
             CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS saved_companies (
+                chat INTEGER NOT NULL, stir TEXT NOT NULL, data TEXT NOT NULL,
+                PRIMARY KEY (chat, stir));
         ''')
         columns = {row[1] for row in self.db.execute('PRAGMA table_info(contracts)')}
         for column in ('display_number', 'scope'):
@@ -198,6 +201,16 @@ class Store:
             if match:
                 self.db.execute('UPDATE OR IGNORE contracts SET scope=? WHERE id=?', ('stir:' + match[1], identity))
         self.db.commit()
+
+    def saved_company(self, chat, stir):
+        row = self.db.execute('SELECT data FROM saved_companies WHERE chat=? AND stir=?', (chat, stir)).fetchone()
+        return validate_company(json.loads(row[0]), stir) if row else None
+
+    def remember_company(self, chat, company):
+        company = validate_company(company)
+        with self.db:
+            self.db.execute('INSERT OR REPLACE INTO saved_companies VALUES (?,?,?)',
+                            (chat, company['stir'], json.dumps(company, ensure_ascii=False)))
 
     def next_number(self, scope):
         row = self.db.execute('SELECT next_number FROM numbering WHERE scope=?', (scope,)).fetchone()
@@ -817,10 +830,11 @@ class Bot:
             s['stir'] = text
             company_file = self.root / 'data/companies.json'
             companies = json.loads(company_file.read_text()) if company_file.exists() else {}
-            if text in companies:
-                s['buyer'] = validate_company(companies[text], text)
+            saved = self.store.saved_company(chat, text)
+            if saved or text in companies:
+                s['buyer'] = saved or validate_company(companies[text], text)
                 s['step'] = 'buyer_confirm'
-                reply, buttons = company_text(s['buyer']) + '\n\nMa’lumotlar to‘g‘rimi?', [CONFIRM, CANCEL]
+                reply, buttons = ('📋 Saqlangan firma. Shu firmani nazarda tutyapsizmi? 😊\n' + company_text(s['buyer']) + '\n\nTasdiqlang yoki «Maydon: qiymat» shaklida tuzating. Boshqa firma uchun yangi STIR yuboring.'), [CONFIRM, CANCEL]
             else:
                 s['step'] = 'buyer'
                 reason = 'Orginfo’da topilmadi.'
@@ -870,6 +884,7 @@ class Bot:
                 s['step'], s['prefill'] = 'buyer', dict(s['buyer'])
                 self.accept_fields(chat, s, fields)
                 return
+            self.store.remember_company(chat, s['buyer'])
             s['step'] = 'vat_rate' if s.get('structured') else 'item'
             if s.get('structured'):
                 self.store.save(chat, s)
