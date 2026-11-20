@@ -990,8 +990,10 @@ class Bot:
                     raise ValueError('Sotuvchi rekvizitlarini /settings orqali kiriting. Sinov fayli uchun /namuna.')
                 seller = validate_company(seller)
                 number, date = self.store.create_contract(chat, s)
-                path = self.root / 'contracts' / f'shartnoma-{number:06d}.docx'
-                path.parent.mkdir(exist_ok=True)
+                display = re.sub(r'[\\/:*?"<>|\s]+', '-', str(s.get('contract_number') or number)).strip('-.') or str(number)
+                # Har bir shartnoma o'z papkasida: raqam qayta ishlatilsa ham eski fayl ustiga yozilmaydi.
+                path = self.root / 'contracts' / f'{number:06d}' / f'Shartnoma №{display} {date}.docx'
+                path.parent.mkdir(parents=True, exist_ok=True)
                 template = self.session_template(chat, s)
                 content = (fill_template(template.read_bytes(), s.get('contract_number', number), date, seller, s) if template.exists()
                            else document_bytes(s.get('contract_number', number), date, seller, s))

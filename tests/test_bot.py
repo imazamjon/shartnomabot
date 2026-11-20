@@ -127,7 +127,8 @@ class Tests(unittest.TestCase):
         self.send(CONFIRM)
         self.prepare()
         self.send(CONFIRM)
-        self.assertEqual(self.store.last_file(7).name, 'shartnoma-000002.docx')
+        self.assertEqual(self.store.last_file(7).parent.name, '000002')
+        self.assertTrue(self.store.last_file(7).name.startswith('Shartnoma №'))
 
     def test_local_lookup(self):
         (self.root / 'data/companies.json').write_text(json.dumps({COMPANY['stir']: COMPANY}))
