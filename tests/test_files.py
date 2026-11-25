@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = Path(__file__).parent / 'fixtures'
 
 
-def make_template():
+def make_template(title='Sinov shabloni'):
     base = document_bytes(1, '01.01.2026', test_bot.COMPANY,
                           {'buyer': test_bot.COMPANY, 'items': [{'name': 'Sinov', 'amount': '1.00'}]})
     with ZipFile(io.BytesIO(base)) as archive:
@@ -24,7 +24,7 @@ def make_template():
     for child in list(body):
         if child.tag != W + 'sectPr':
             body.remove(child)
-    for text in ['{{number}} {{date}}', '{{seller_name}}', '{{buyer_name}}', '{{items}}', '{{total}}']:
+    for text in [title, '{{number}} {{date}}', '{{seller_name}}', '{{buyer_name}}', '{{items}}', '{{total}}']:
         p = ET.Element(W + 'p')
         # Test placeholders split across Word runs.
         for chunk in [text[:4], text[4:]]:
@@ -138,8 +138,36 @@ class BotFilesTests(unittest.TestCase):
     def test_template_upload(self):
         self.send('/shablon')
         self.attach(make_template(), 'contract.docx')
-        self.assertTrue((self.root / 'data/templates/7.docx').exists())
+        self.assertTrue((self.root / 'data/templates/7/contract.docx').exists())
         self.assertIsNone(self.store.session(7))
+
+    def test_template_selection_shares_numbering_and_preserves_existing_files(self):
+        (self.root / 'template.docx').write_bytes(make_template('General template'))
+        legacy = self.root / 'data/templates/7.docx'
+        legacy.parent.mkdir()
+        legacy_data = make_template('Previous template')
+        legacy.write_bytes(legacy_data)
+
+        for title in ['First template', 'Second template']:
+            self.send('/shablon')
+            self.attach(make_template(title), 'contract.docx')
+
+        self.assertEqual(legacy.read_bytes(), legacy_data)
+        self.assertEqual(len(self.bot.template_choices(8)), 1)
+        for number, label, title in [
+            (1, '📄 contract', 'First template'),
+            (2, '📄 contract (2)', 'Second template'),
+            (3, '📎 Avvalgi shaxsiy shablon', 'Previous template'),
+        ]:
+            self.send(NEW)
+            self.assertEqual(self.store.session(7)['step'], 'template_pick')
+            for message in [label, test_bot.COMPANY['stir'], test_bot.TEXT, CONFIRM, 'Kran', '1.00', NEXT]:
+                self.send(message)
+            self.assertEqual(self.store.session(7)['contract_number'], number)
+            self.send(CONFIRM)
+            with ZipFile(io.BytesIO(self.api.files[-1])) as archive:
+                tree = ET.fromstring(archive.read('word/document.xml'))
+            self.assertIn(title, ''.join(node.text or '' for node in tree.iter(W + 't')))
 
     def test_demo_without_seller(self):
         (self.root / 'company.json').unlink()

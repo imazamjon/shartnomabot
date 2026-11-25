@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import sqlite3
+import tempfile
 import time
 import uuid
 import threading
@@ -426,15 +427,41 @@ class Bot:
             self.api.send(chat, 'Shartnoma namunasining qaysi biridan foydalanamiz?',
                           [label for label, _ in choices] + [CANCEL])
             return
-        self.store.save(chat, {'step': 'stir', 'items': [], 'seller_snapshot': seller,
-                               'structured': self.structured(chat)})
+        session = {'step': 'stir', 'items': [], 'seller_snapshot': seller}
+        if choices:
+            session['template_file'] = choices[0][1]
+        session['structured'] = self.structured(chat, self.session_template(chat, session))
+        self.store.save(chat, session)
         self.api.send(chat, 'Hamkor korxonaning 9 xonali STIR raqamini kiriting.', [CANCEL])
 
+    def personal_template_dir(self, chat):
+        return self.root / 'data' / 'templates' / str(int(chat))
+
     def template_choices(self, chat):
-        """Namunalar ro‘yxati. Shaxsiy shablon ulangan bo‘lsa tanlov so‘ralmaydi."""
-        if self.template_for(chat) != self.root / 'template.docx':
-            return []
-        return [(label, name) for label, name in CONTRACT_TEMPLATES if self.named_template(name).is_file()]
+        choices = [(label, name) for label, name in CONTRACT_TEMPLATES if self.named_template(name).is_file()]
+        legacy = self.personal_template_dir(chat).with_suffix('.docx')
+        if legacy.is_file():
+            choices.append(('📎 Avvalgi shaxsiy shablon', 'personal-legacy'))
+        paths = sorted(self.personal_template_dir(chat).glob('*.docx'))
+        choices.extend((f'📄 {path.stem}', f'personal/{path.name}') for path in paths if path.is_file())
+        return choices
+
+    def save_personal_template(self, chat, filename, data):
+        folder = self.personal_template_dir(chat)
+        folder.mkdir(parents=True, exist_ok=True)
+        stem = Path(filename.replace('\\', '/')).stem
+        stem = ' '.join(stem.split()).strip('. ')[:48].strip() or 'Shaxsiy shablon'
+        with tempfile.NamedTemporaryFile(dir=folder) as temporary:
+            temporary.write(data)
+            temporary.flush()
+            version = 1
+            while True:
+                name = stem if version == 1 else f'{stem} ({version})'
+                try:
+                    os.link(temporary.name, folder / f'{name}.docx')
+                    return name
+                except FileExistsError:
+                    version += 1
 
     def named_template(self, name):
         """Yuklangan shablon data/ ichida (Railway volume), standart nusxa loyiha ildizida."""
@@ -443,9 +470,20 @@ class Bot:
 
     def session_template(self, chat, s):
         name = s.get('template_file')
-        if name in {file for _, file in CONTRACT_TEMPLATES} and self.named_template(name).is_file():
-            return self.named_template(name)
-        return self.template_for(chat)
+        if not name:
+            return self.template_for(chat)
+        if name in {file for _, file in CONTRACT_TEMPLATES}:
+            path = self.named_template(name)
+        elif name == 'personal-legacy':
+            path = self.personal_template_dir(chat).with_suffix('.docx')
+        else:
+            filename = name.removeprefix('personal/')
+            if filename == name or Path(filename).name != filename or not filename.endswith('.docx'):
+                raise ValueError('Shablonni /start orqali qayta tanlang.')
+            path = self.personal_template_dir(chat) / filename
+        if not path.is_file():
+            raise ValueError('Tanlangan shablon topilmadi. /start orqali qayta tanlang.')
+        return path
 
     def number_scope(self, chat, seller=None):
         seller = seller or self.seller_for(chat)
@@ -569,7 +607,7 @@ class Bot:
             self.store.save(chat, {'step': 'template'})
             if self.template_for(chat).exists():
                 self.api.document(chat, self.template_for(chat))
-            self.api.send(chat, 'Shartnoma .docx faylini yuboring. Majburiy maydonlar:\n'
+            self.api.send(chat, 'Shartnoma .docx faylini yuboring. Fayl nomi bilan ro‘yxatga qo‘shiladi. Majburiy maydonlar:\n'
                           '{{number}}, {{date}}, {{seller_name}}, {{buyer_name}}, {{items}}, {{total}}\n\n'
                           'Rekvizitlar: {{seller_stir}}, {{seller_director}}, {{seller_address}}, '
                           '{{seller_bank}}, {{seller_account}}, {{seller_mfo}}. '
@@ -591,7 +629,8 @@ class Bot:
                           'O‘z korxonangizni /settings orqali kiriting.')
             return
         if text in ('/start', '/yangi', NEW):
-            if self.template_for(chat).exists() and not self.preference_path(chat).exists():
+            if (self.template_for(chat).exists() and not self.preference_path(chat).exists()
+                    and not any(name.startswith('personal') for _, name in self.template_choices(chat))):
                 self.store.save(chat, {'step': 'template_choice'})
                 self.api.document(chat, self.sample_document(chat))
                 self.api.send(chat, 'Yuqoridagi hujjat xayoliy ma’lumotlar bilan to‘ldirilgan SINOV namunasi. Shartnoma shablonini bir marta tanlang. Tayyor namunamizdan foydalanasizmi yoki o‘z shartnomangizni ulaysizmi? Namuna ko‘rish: /namuna', [READY, CUSTOM, CANCEL])
@@ -680,14 +719,9 @@ class Bot:
                     self.store.clear(chat)
                     self.api.send(chat, '✅ Discover Invest shabloni saqlandi. /start bosilganda namuna tanlanadi.')
                     return
-                dest = self.root / 'data' / 'templates' / f'{int(chat)}.docx'
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                tmp = dest.with_suffix('.tmp')
-                tmp.write_bytes(data)
-                tmp.replace(dest)
-                write_json(self.preference_path(chat), {'template': 'custom'})
+                name = self.save_personal_template(chat, attachment['file_name'], data)
                 self.store.clear(chat)
-                self.api.send(chat, '✅ Shaxsiy shabloningiz saqlandi. Keyingi shartnomalar shu shablonda bo‘ladi.')
+                self.api.send(chat, f'✅ «{name}» shabloni qo‘shildi. Shablonni /start orqali tanlang.')
                 if s.get('resume_start'):
                     self.start_contract(chat)
             else:
@@ -746,10 +780,11 @@ class Bot:
             self.confirmation(chat, s)
             return
         if step == 'template_pick':
-            chosen = dict(CONTRACT_TEMPLATES).get(text)
-            if not chosen or not self.named_template(chosen).is_file():
+            chosen = dict(self.template_choices(chat)).get(text)
+            if not chosen:
                 raise ValueError('Pastdagi tugmalardan shartnoma namunasini tanlang.')
-            s.update(step='stir', template_file=chosen, structured=self.structured(chat, self.named_template(chosen)))
+            s.update(step='stir', template_file=chosen)
+            s['structured'] = self.structured(chat, self.session_template(chat, s))
             self.store.save(chat, s)
             self.api.send(chat, f'{text} tanlandi.\nHamkor korxonaning 9 xonali STIR raqamini kiriting.', [CANCEL])
             return
@@ -761,7 +796,7 @@ class Bot:
             if text == CUSTOM:
                 self.store.save(chat, {'step': 'template', 'resume_start': True})
                 self.api.document(chat, self.root / 'template.docx')
-                self.api.send(chat, 'O‘z shartnomangizning botga moslangan .docx shablonini yuboring. Moslash uchun hozir yuborilgan maydonli Word faylini asos qilib oling: {{number}}, {{date_long}}, {{seller_name}}, {{buyer_name}}, {{total}} va tovar jadvalidagi {{item_name}} kabi maydonlarni saqlang. Oddiy to‘ldirilmagan Word o‘rniga shu maydonli shablon kerak. Bir marta ulaysiz. Batafsil: /shablon', [CANCEL])
+                self.api.send(chat, 'O‘z shartnomangizning botga moslangan .docx shablonini yuboring. Moslash uchun hozir yuborilgan maydonli Word faylini asos qilib oling: {{number}}, {{date_long}}, {{seller_name}}, {{buyer_name}}, {{total}} va tovar jadvalidagi {{item_name}} kabi maydonlarni saqlang. Shablon fayl nomi bilan ro‘yxatga qo‘shiladi. Batafsil: /shablon', [CANCEL])
                 return
             raise ValueError('Tayyor yoki shaxsiy shablonni tanlang.')
         if step == 'settings':
@@ -1004,12 +1039,12 @@ class Bot:
                 if not seller:
                     raise ValueError('Sotuvchi rekvizitlarini /settings orqali kiriting. Sinov fayli uchun /namuna.')
                 seller = validate_company(seller)
+                template = self.session_template(chat, s)
                 number, date = self.store.create_contract(chat, s)
                 display = re.sub(r'[\\/:*?"<>|\s]+', '-', str(s.get('contract_number') or number)).strip('-.') or str(number)
                 # Har bir shartnoma o'z papkasida: raqam qayta ishlatilsa ham eski fayl ustiga yozilmaydi.
                 path = self.root / 'contracts' / f'{number:06d}' / f'Shartnoma №{display} {date}.docx'
                 path.parent.mkdir(parents=True, exist_ok=True)
-                template = self.session_template(chat, s)
                 content = (fill_template(template.read_bytes(), s.get('contract_number', number), date, seller, s) if template.exists()
                            else document_bytes(s.get('contract_number', number), date, seller, s))
                 if hasattr(self.api, 'progress'):

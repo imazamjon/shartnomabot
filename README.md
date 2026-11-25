@@ -108,7 +108,7 @@ Javohir yuborgan bo‘sh `дог.doc` asosidagi `template.docx` ishlatiladi. Bar
 
 Tayyor shablon birlik, miqdor va bir birlik narxini alohida so‘raydi. QQS 12%, QQSsiz yoki boshqa stavka; narx QQS bilan yoki QQSsiz tanlanadi. QQSli narxdan `narx*100/(100+stavka)` orqali sof narx chiqariladi. Hisob Decimal bilan oraliq narxni yaxlitlamasdan bajariladi; satr summalari tiyingacha ROUND_HALF_UP, QQS yakuniy summa va sof summa farqi. Jadvaldagi birlik narxi ikki kasrda ko‘rsatilgani uchun ko‘rinadigan narx × miqdor bilan bir tiyin yaxlitlash farqi bo‘lishi mumkin.
 
-Shaxsiy shablon `data/templates/TELEGRAM_ID.docx`, tanlov `data/preferences/TELEGRAM_ID.json`da saqlanadi. `/shablon` bot maydonlari qo‘yilgan Word shablonni bir marta ulaydi. Oddiy bo‘sh hujjat avtomatik ravishda moslanmaydi: yuborilgan maydonli namunadan foydalanish yoki hujjatni bir marta shu maydonlarga moslash kerak. `{{items}}` ishlatadigan eski oddiy shablonlarda avvalgi jami-summa oqimi saqlangan.
+`/shablon` orqali maydonli Word fayllarini yuklang. Bot har birini fayl nomi bilan `data/templates/TELEGRAM_ID/` papkasiga saqlaydi va takroriy nomga tartib raqami qo‘shadi. Avval ulangan shaxsiy shablon ham tanlovda chiqadi. Oddiy Word hujjatini yuklashdan avval bot maydonlarini qo‘ying. `{{items}}` ishlatadigan shablonlarda jami-summa oqimi saqlangan.
 
 PDF aynan saqlangan Word fayldan LibreOffice orqali olinadi. Bot `SOFFICE_PATH`, PATHdagi `soffice`/`libreoffice`, `/opt/libreoffice*` va bundled nusxani ketma-ket sinaydi, har birini ikki marta. Har aylantirish uchun alohida profil, 120 soniya chegara va atomar fayl yozish bor. Xato sababi (stderr) jurnalga yoziladi. Serverda: `sudo apt install libreoffice-writer poppler-utils fonts-liberation`.
 
@@ -134,7 +134,7 @@ Telegram API: https://core.telegram.org/bots/api
 
 ## Shartnoma namunalari
 
-`template.docx` — umumiy shartnoma. `template-discover-invest.docx` mavjud bo‘lsa, har `/start`da «Shartnoma namunasining qaysi biridan foydalanamiz?» deb so‘raladi: «📑 Umumiy shartnoma» yoki «🏢 Discover Invest shartnomasi». Discover Invest shablonini istalgan admin `/discover` orqali maydonli .docx sifatida yuklaydi. Shaxsiy shablon ulagan adminga tanlov chiqmaydi.
+`template.docx` — umumiy shartnoma. Bir nechta shablon mavjud bo‘lsa, `/start` umumiy, Discover Invest va shu chatga tegishli shaxsiy shablonlardan tanlashni so‘raydi. Discover Invest shablonini admin `/discover` orqali maydonli `.docx` sifatida yuklaydi. Bitta sotuvchi STIRiga tegishli barcha shartnomalar shablondan qat’i nazar bitta raqam ketma-ketligidan foydalanadi.
 
 ## Xodim qo‘shish
 
